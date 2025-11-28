@@ -1,9 +1,8 @@
-
 <!DOCTYPE html>
 <html lang='fr'>
 <head>
 <meta charset='UTF-8'>
-<title>Zone Réveil – Full Config</title>
+<title>Zone Réveil – Full Config + Waves</title>
 <meta name='viewport' content='width=device-width, initial-scale=1.0'>
 <style>
 body { font-family:Arial; margin:0; background:#ffff00; transition:background 0.3s; }
@@ -21,6 +20,7 @@ button { width:100%; padding:12px; border:none; border-radius:999px;
                  border-radius:6px; }
 .history-box { margin-top:12px; padding:10px; background:#fafafa; border-radius:8px;
                font-size:13px; max-height:200px; overflow-y:auto; border:1px solid #ddd; }
+.table { margin-top:12px; font-size:14px; background:#f3f3f3; padding:10px; border-radius:8px; }
 </style>
 </head>
 <body>
@@ -31,8 +31,30 @@ button { width:100%; padding:12px; border:none; border-radius:999px;
   <div class='box'>
     <div id='elapsedDetailed' style='font-size:22px; font-weight:bold;'>0j 00h 00m 00s</div>
     <div id='zone' style='font-size:20px; margin-top:6px;'>Zone jaune</div>
+
+    <div class='table' id='nextZones'></div>
+
+    <!-- Nouveau bloc explicatif : 3 waves neuroscientifiques (affichage fixe) -->
+    <div class='table' id='wavesInfo'>
+      <b>Waves neuroscientifiques (cycle 24 h) :</b><br>
+      • Wave 1 : Hard task / performance élevée (≈ 0–8 h après réveil)<br>
+      &nbsp;&nbsp;→ dopamine + cortisol + noradrénaline, cerveau optimal pour le travail dur.<br>
+      • Wave 2 : Creativity / brainstorming (≈ 9–16 h après réveil)<br>
+      &nbsp;&nbsp;→ bascule chimique, plus de sérotonine, pensée diffuse et créative.<br>
+      • Wave 3 : Sommeil / lazyness / récupération (≈ 17–24 h après réveil)<br>
+      &nbsp;&nbsp;→ montée d’adénosine, baisse d’activation, le cerveau se met en mode récupération.
+    </div>
+
     <div id='ranges' class='range-display'></div>
-    <button class='reset-btn' onclick='resetWake()'>Reset</button>
+
+    <!-- Bloc : saisie manuelle de l'heure de réveil -->
+    <div style='margin-top:12px;'>
+      <label for='wakeInput'>Heure de réveil (si oubli du reset) :</label>
+      <input type='time' id='wakeInput' style='width:100%; padding:8px;'>
+      <button class='reset-btn' onclick='setWakeFromTime()'>Valider l'heure de réveil</button>
+    </div>
+
+    <button class='reset-btn' onclick='resetWake()'>Reset maintenant</button>
   </div>
 
   <div class='box'>
@@ -105,7 +127,24 @@ function resetWake(){
   updateHistoryDisplay();
 }
 
-// Add to history
+// set wake from manual time input (same day)
+function setWakeFromTime(){
+  const val = document.getElementById('wakeInput').value;
+  if(!val) return;
+  const parts = val.split(':');
+  if(parts.length !== 2) return;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if(isNaN(h) || isNaN(m)) return;
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  const ts = d.getTime();
+  localStorage.setItem('wake', ts);
+  addHistory(ts);
+  update();
+}
+
+// Add history entry
 function addHistory(ts){
   let h = JSON.parse(localStorage.getItem('history') || "[]");
   h.unshift(ts);
@@ -151,6 +190,10 @@ function formatDetailed(ms){
   return `${d}j ${String(h).padStart(2,'0')}h ${String(m).padStart(2,'0')}m ${String(sec).padStart(2,'0')}s`;
 }
 
+function formatTimeFromWake(wake, hours){
+  return new Date(wake + hours*ONE_HOUR).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+}
+
 function update(){
   let wake = parseInt(localStorage.getItem('wake'));
   if(!wake){ wake=Date.now(); localStorage.setItem('wake',wake); }
@@ -165,7 +208,7 @@ function update(){
 
   document.getElementById('elapsedDetailed').innerText = formatDetailed(diff);
 
-  let tH=trans/60;
+  let tH = trans/60;
   let zone="Zone bleue";
 
   if(h < s1-tH) zone="Zone jaune";
@@ -184,6 +227,36 @@ function update(){
      • Transition V→B : ${(s2-tH).toFixed(2)} → ${(s2+tH).toFixed(2)} h<br>
      • Bleu : ${(s2+tH).toFixed(2)} → ${s3} h<br>
      • Retour Jaune instant après ${s3} h`;
+
+  // Next zone table (unchanged logic)
+  let next1Time="", next2Time="", next1Name="", next2Name="";
+
+  if(h < s1){
+    next1Name="Vert";
+    next1Time=formatTimeFromWake(wake,s1);
+    next2Name="Bleu";
+    next2Time=formatTimeFromWake(wake,s2);
+  } else if(h < s2){
+    next1Name="Bleu";
+    next1Time=formatTimeFromWake(wake,s2);
+    next2Name="Retour Jaune";
+    next2Time=formatTimeFromWake(wake,s3);
+  } else if(h < s3){
+    next1Name="Retour Jaune";
+    next1Time=formatTimeFromWake(wake,s3);
+    next2Name="Cycle suivant (Vert)";
+    next2Time=formatTimeFromWake(wake,s3 + s1);
+  } else {
+    next1Name="Vert";
+    next1Time=formatTimeFromWake(wake,s1);
+    next2Name="Bleu";
+    next2Time=formatTimeFromWake(wake,s2);
+  }
+
+  document.getElementById('nextZones').innerHTML =
+    `<b>Zone actuelle :</b> ${zone}<br>
+     <b>Prochaine zone :</b> ${next1Name} (${next1Time})<br>
+     <b>Zone suivante :</b> ${next2Name} (${next2Time})`;
 
   document.body.style.background = getColor(h,s1,s2,s3,trans);
 
