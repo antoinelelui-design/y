@@ -1,0 +1,198 @@
+
+<!DOCTYPE html>
+<html lang='fr'>
+<head>
+<meta charset='UTF-8'>
+<title>Zone Réveil – Full Config</title>
+<meta name='viewport' content='width=device-width, initial-scale=1.0'>
+<style>
+body { font-family:Arial; margin:0; background:#ffff00; transition:background 0.3s; }
+.hidden { display:none; }
+.container { max-width:480px; margin:auto; padding:16px; }
+h1 { text-align:center; margin-top:16px; }
+.box { background:white; padding:16px; border-radius:12px; margin-top:16px;
+       box-shadow:0 4px 10px rgba(0,0,0,0.15); }
+button { width:100%; padding:12px; border:none; border-radius:999px;
+         font-size:16px; font-weight:bold; margin-top:12px; cursor:pointer; }
+.settings-btn { background:#333; color:white; }
+.reset-btn { background:#007BFF; color:white; }
+.back-btn { background:#555; color:white; }
+.range-display { font-size:14px; margin-top:8px; background:#f3f3f3; padding:8px;
+                 border-radius:6px; }
+.history-box { margin-top:12px; padding:10px; background:#fafafa; border-radius:8px;
+               font-size:13px; max-height:200px; overflow-y:auto; border:1px solid #ddd; }
+</style>
+</head>
+<body>
+
+<div id='mainPage' class='container'>
+  <h1>Zone Réveil</h1>
+
+  <div class='box'>
+    <div id='elapsedDetailed' style='font-size:22px; font-weight:bold;'>0j 00h 00m 00s</div>
+    <div id='zone' style='font-size:20px; margin-top:6px;'>Zone jaune</div>
+    <div id='ranges' class='range-display'></div>
+    <button class='reset-btn' onclick='resetWake()'>Reset</button>
+  </div>
+
+  <div class='box'>
+    <h3>Historique des resets</h3>
+    <div id='history' class='history-box'></div>
+  </div>
+
+  <button class='settings-btn' onclick='openSettings()'>⚙️ Settings</button>
+</div>
+
+<!-- SETTINGS PAGE -->
+<div id='settingsPage' class='container hidden'>
+  <h1>Configuration</h1>
+
+  <div class='box'>
+    <label>Transition totale (minutes)</label>
+    <input type='number' id='transition' style='width:100%; padding:8px;'>
+
+    <label>Passage Jaune → Vert (S1 - heures)</label>
+    <input type='number' id='s1' style='width:100%; padding:8px;'>
+
+    <label>Passage Vert → Bleu (S2 - heures)</label>
+    <input type='number' id='s2' style='width:100%; padding:8px;'>
+
+    <label>Passage Bleu → Retour Jaune (S3 - heures)</label>
+    <input type='number' id='s3' style='width:100%; padding:8px;'>
+
+    <button onclick='saveConfig()'>Enregistrer</button>
+    <button class='back-btn' onclick='closeSettings()'>Retour</button>
+  </div>
+</div>
+
+<script>
+const ONE_HOUR = 3600000;
+
+// UI switching
+function openSettings(){
+  document.getElementById('mainPage').classList.add('hidden');
+  document.getElementById('settingsPage').classList.remove('hidden');
+  loadConfig();
+}
+function closeSettings(){
+  document.getElementById('settingsPage').classList.add('hidden');
+  document.getElementById('mainPage').classList.remove('hidden');
+  update();
+}
+
+// Save config
+function saveConfig(){
+  localStorage.setItem('transition', document.getElementById('transition').value);
+  localStorage.setItem('s1', document.getElementById('s1').value);
+  localStorage.setItem('s2', document.getElementById('s2').value);
+  localStorage.setItem('s3', document.getElementById('s3').value);
+  alert('Configuration enregistrée.');
+}
+
+// Load config
+function loadConfig(){
+  document.getElementById('transition').value = localStorage.getItem('transition') || 60;
+  document.getElementById('s1').value = localStorage.getItem('s1') || 8;
+  document.getElementById('s2').value = localStorage.getItem('s2') || 16;
+  document.getElementById('s3').value = localStorage.getItem('s3') || 24;
+}
+
+// Reset & history
+function resetWake(){
+  let now = Date.now();
+  localStorage.setItem('wake', now);
+  addHistory(now);
+  updateHistoryDisplay();
+}
+
+// Add to history
+function addHistory(ts){
+  let h = JSON.parse(localStorage.getItem('history') || "[]");
+  h.unshift(ts);
+  localStorage.setItem('history', JSON.stringify(h.slice(0,50)));
+}
+function updateHistoryDisplay(){
+  let h = JSON.parse(localStorage.getItem('history') || "[]");
+  document.getElementById('history').innerHTML =
+    h.map(t => new Date(t).toLocaleString()).join("<br>");
+}
+
+// Color interpolation
+function lerp(a,b,t){ return a+(b-a)*t; }
+function mixColor(c1,c2,t){
+  let r=Math.round(lerp(c1[0],c2[0],t));
+  let g=Math.round(lerp(c1[1],c2[1],t));
+  let b=Math.round(lerp(c1[2],c2[2],t));
+  return `rgb(${r},${g},${b})`;
+}
+
+function getColor(h,s1,s2,s3,trans){
+  let tH = trans/60;
+
+  if(h < s1-tH) return "rgb(255,255,0)";
+  if(h < s1+tH) return mixColor([255,255,0],[0,255,0],(h-(s1-tH))/(2*tH));
+
+  if(h < s2-tH) return "rgb(0,255,0)";
+  if(h < s2+tH) return mixColor([0,255,0],[0,0,255],(h-(s2-tH))/(2*tH));
+
+  if(h < s3) return "rgb(0,0,255)";
+
+  return "rgb(255,255,0)";
+}
+
+function formatDetailed(ms){
+  let s = Math.floor(ms/1000);
+  let d = Math.floor(s/86400);
+  s%=86400;
+  let h = Math.floor(s/3600);
+  s%=3600;
+  let m = Math.floor(s/60);
+  let sec = s%60;
+  return `${d}j ${String(h).padStart(2,'0')}h ${String(m).padStart(2,'0')}m ${String(sec).padStart(2,'0')}s`;
+}
+
+function update(){
+  let wake = parseInt(localStorage.getItem('wake'));
+  if(!wake){ wake=Date.now(); localStorage.setItem('wake',wake); }
+
+  const trans = parseFloat(localStorage.getItem('transition')||60);
+  const s1 = parseFloat(localStorage.getItem('s1')||8);
+  const s2 = parseFloat(localStorage.getItem('s2')||16);
+  const s3 = parseFloat(localStorage.getItem('s3')||24);
+
+  let diff = Date.now() - wake;
+  let h = diff/ONE_HOUR;
+
+  document.getElementById('elapsedDetailed').innerText = formatDetailed(diff);
+
+  let tH=trans/60;
+  let zone="Zone bleue";
+
+  if(h < s1-tH) zone="Zone jaune";
+  else if(h < s1+tH) zone="Transition Jaune→Vert";
+  else if(h < s2-tH) zone="Zone verte";
+  else if(h < s2+tH) zone="Transition Vert→Bleu";
+  else if(h < s3) zone="Zone bleue";
+  else zone="Retour jaune (Fin cycle)";
+
+  document.getElementById('zone').innerText = zone;
+
+  document.getElementById('ranges').innerHTML =
+    `• Jaune : 0 → ${(s1-tH).toFixed(2)} h<br>
+     • Transition J→V : ${(s1-tH).toFixed(2)} → ${(s1+tH).toFixed(2)} h<br>
+     • Vert : ${(s1+tH).toFixed(2)} → ${(s2-tH).toFixed(2)} h<br>
+     • Transition V→B : ${(s2-tH).toFixed(2)} → ${(s2+tH).toFixed(2)} h<br>
+     • Bleu : ${(s2+tH).toFixed(2)} → ${s3} h<br>
+     • Retour Jaune instant après ${s3} h`;
+
+  document.body.style.background = getColor(h,s1,s2,s3,trans);
+
+  updateHistoryDisplay();
+}
+
+update();
+setInterval(update,1000);
+</script>
+
+</body>
+</html>
